@@ -1289,13 +1289,22 @@ body {
 
 .chart-container {
     background: var(--bg-card);
-    border-radius: 12px;
-    padding: 16px;
+    border-radius: 16px;
+    padding: 20px;
+    height: 280px; /* Увеличили высоту */
+    position: relative;
     transition: background 0.3s ease;
 }
 
 .chart-container.large {
-    height: 250px;
+    height: 320px; /* Еще больше для детальной статистики */
+}
+
+#activityCanvas,
+#mainChart {
+    width: 100%;
+    height: 100%;
+    display: block;
 }
 
 /* Distribution Chart */
