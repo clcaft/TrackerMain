@@ -1260,66 +1260,137 @@ function renderMainChart() {
     if (!canvas) return;
     
     const ctx = canvas.getContext('2d');
-    const width = canvas.width = canvas.offsetWidth;
-    const height = canvas.height = canvas.offsetHeight;
+    // Увеличиваем размер canvas для четкости
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    
+    ctx.scale(dpr, dpr);
+    
+    const width = rect.width;
+    const height = rect.height;
     
     ctx.clearRect(0, 0, width, height);
     
     const data = generateChartData();
-    if (data.length === 0) return;
-    
-    const maxVal = Math.max(...data.map(d => d.value), 1);
-    const padding = 40;
-    const chartWidth = width - padding * 2;
-    const chartHeight = height - padding * 2;
-    
-    // Сетка
-    ctx.strokeStyle = 'rgba(128,128,128,0.2)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 4; i++) {
-        const y = padding + (chartHeight / 4) * i;
-        ctx.beginPath();
-        ctx.moveTo(padding, y);
-        ctx.lineTo(width - padding, y);
-        ctx.stroke();
+    if (data.length === 0 || data.every(d => d.value === 0)) {
+        // Пустое состояние
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || 'rgba(255,255,255,0.3)';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Нет данных за этот период', width / 2, height / 2);
+        return;
     }
     
-    // Столбцы
-    const barWidth = chartWidth / data.length * 0.6;
-    const barSpacing = chartWidth / data.length;
+    // Отступы - делаем график больше, уменьшаем пустое пространство
+    const padding = { top: 20, right: 20, bottom: 40, left: 50 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+    
+    const maxVal = Math.max(...data.map(d => d.value), 1);
+    
+    // Сетка - рисуем линии
+    ctx.strokeStyle = 'rgba(128,128,128,0.15)';
+    ctx.lineWidth = 1;
+    
+    // Горизонтальные линии сетки
+    for (let i = 0; i <= 5; i++) {
+        const y = padding.top + (chartHeight / 5) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(width - padding.right, y);
+        ctx.stroke();
+        
+        // Подписи значений слева
+        const value = Math.round(maxVal - (maxVal / 5) * i);
+        ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || 'rgba(255,255,255,0.5)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(value.toString(), padding.left - 10, y);
+    }
+    
+    // Столбцы - делаем шире и выше
+    const barCount = data.length;
+    const barSpacing = chartWidth / barCount;
+    const barWidth = barSpacing * 0.7; // 70% от доступного пространства
     
     data.forEach((item, i) => {
         const barHeight = (item.value / maxVal) * chartHeight;
-        const x = padding + i * barSpacing + (barSpacing - barWidth) / 2;
-        const y = height - padding - barHeight;
+        const x = padding.left + i * barSpacing + (barSpacing - barWidth) / 2;
+        const y = padding.top + chartHeight - barHeight;
         
-        // Градиент
-        const gradient = ctx.createLinearGradient(0, y, 0, height - padding);
+        // Градиент для столбца
+        const gradient = ctx.createLinearGradient(0, y, 0, padding.top + chartHeight);
         gradient.addColorStop(0, '#667eea');
-        gradient.addColorStop(1, '#f093fb');
+        gradient.addColorStop(1, '#764ba2');
         
+        // Тень столбца
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(x + 2, y + 2, barWidth, barHeight);
+        
+        // Сам столбец
         ctx.fillStyle = gradient;
         ctx.fillRect(x, y, barWidth, barHeight);
         
-        // Подпись
+        // Скругление верхних углов
+        ctx.beginPath();
+        ctx.moveTo(x + 4, y);
+        ctx.lineTo(x + barWidth - 4, y);
+        ctx.quadraticCurveTo(x + barWidth, y, x + barWidth, y + 4);
+        ctx.lineTo(x + barWidth, y + barHeight);
+        ctx.lineTo(x, y + barHeight);
+        ctx.lineTo(x, y + 4);
+        ctx.quadraticCurveTo(x, y, x + 4, y);
+        ctx.fill();
+        
+        // Подпись дня снизу
         ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || 'rgba(255,255,255,0.7)';
-        ctx.font = '10px sans-serif';
+        ctx.font = 'bold 12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(item.label, x + barWidth / 2, height - padding + 15);
+        ctx.textBaseline = 'top';
+        
+        // Разбиваем длинные подписи на 2 строки если нужно
+        let label = item.label;
+        if (label.length > 3 && data.length > 7) {
+            label = label.substring(0, 3);
+        }
+        
+        ctx.fillText(label, x + barWidth / 2, padding.top + chartHeight + 10);
     });
+    
+    // Линия соединяющая верхушки столбцов (тренд)
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    data.forEach((item, i) => {
+        const barHeight = (item.value / maxVal) * chartHeight;
+        const x = padding.left + i * barSpacing + barSpacing / 2;
+        const y = padding.top + chartHeight - barHeight;
+        
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
 }
 
 function generateChartData() {
     const stats = DataManager.getStats(currentPeriod);
     const sessions = stats.sessions;
     
-    const grouped = {};
+    // Создаем массив дней в правильном порядке (от старых к новым)
     const days = getDaysForPeriod(currentPeriod);
+    const grouped = {};
     
+    // Инициализируем все дни нулями
     days.forEach(day => {
         grouped[day] = 0;
     });
     
+    // Заполняем данными
     sessions.forEach(s => {
         const date = new Date(s.date);
         const key = formatDateKey(date, currentPeriod);
@@ -1338,10 +1409,46 @@ function generateChartData() {
         }
     });
     
-    return Object.entries(grouped).map(([key, value]) => ({
-        label: key,
-        value: value
+    // Возвращаем в порядке days (хронологическом)
+    return days.map(day => ({
+        label: day,
+        value: grouped[day] || 0
     }));
+}
+
+function getDaysForPeriod(period) {
+    const days = [];
+    const now = new Date();
+    
+    switch(period) {
+        case 'week':
+            // Последние 7 дней в правильном порядке (пн, вт, ср...)
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+                days.push(d.toLocaleDateString('ru-RU', { weekday: 'short' }).toLowerCase());
+            }
+            break;
+        case 'month':
+            // По неделям
+            for (let i = 3; i >= 0; i--) {
+                days.push(`Нед ${4 - i}`);
+            }
+            break;
+        case 'year':
+            // По месяцам
+            for (let i = 11; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                days.push(d.toLocaleDateString('ru-RU', { month: 'short' }).toLowerCase());
+            }
+            break;
+        default:
+            // Сегодня - по часам
+            for (let i = 0; i < 24; i += 3) {
+                days.push(`${i}:00`);
+            }
+    }
+    
+    return days;
 }
 
 function getDaysForPeriod(period) {
